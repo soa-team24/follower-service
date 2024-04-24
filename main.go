@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"follower-service/handler"
+	"follower-service/model"
 	"follower-service/repository"
 	"log"
 	"net/http"
@@ -14,12 +15,61 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func seedProfiles(store *repository.FollowRepo) error {
+	profiles := []*model.Profile{
+		{
+			ID:             5,
+			FirstName:      "Marko",
+			LastName:       "Filipovic",
+			ProfilePicture: "profile1.jpg",
+			UserID:         2,
+			Follows:        nil,
+		},
+		{
+			ID:             4,
+			FirstName:      "Maja",
+			LastName:       "Petrovic",
+			ProfilePicture: "profile2.jpg",
+			UserID:         1,
+			Follows:        nil,
+		},
+		{
+			ID:             6,
+			FirstName:      "Mina",
+			LastName:       "Jovanovic",
+			ProfilePicture: "profile2.jpg",
+			UserID:         3,
+			Follows:        nil,
+		},
+		{
+			ID:             7,
+			FirstName:      "Petar",
+			LastName:       "Ivanovic",
+			ProfilePicture: "profile2.jpg",
+			UserID:         4,
+			Follows:        nil,
+		},
+
+		// Add more profiles as needed
+	}
+
+	// Iterate over profiles and save them to the database
+	for _, profile := range profiles {
+		err := store.WriteProfile(profile)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func main() {
 	//Reading from environment, if not set we will default it to 8080.
 	//This allows flexibility in different environments (for eg. when running multiple docker api's and want to override the default port)
 	port := os.Getenv("PORT")
 	if len(port) == 0 {
-		port = "8080"
+		port = "8083"
 	}
 
 	// Initialize context
@@ -38,6 +88,11 @@ func main() {
 	defer store.CloseDriverConnection(timeoutContext)
 	store.CheckConnection()
 
+	err = seedProfiles(store)
+	if err != nil {
+		logger.Fatal("Failed to seed profiles:", err)
+	}
+
 	//Initialize the handler and inject said logger
 	followsHandler := handler.NewFollowHandler(logger, store)
 
@@ -45,6 +100,11 @@ func main() {
 	router := mux.NewRouter()
 
 	router.Use(followsHandler.MiddlewareContentTypeSet)
+
+	getAllProfiles := router.Methods(http.MethodGet).Subrouter()
+	getAllProfiles.HandleFunc("/profiles", followsHandler.GetAllProfiles)
+
+	//postPersonNode.Use(moviesHandler.MiddlewarePersonDeserialization)
 
 	cors := gorillaHandlers.CORS(gorillaHandlers.AllowedOrigins([]string{"*"}))
 

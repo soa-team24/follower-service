@@ -56,7 +56,85 @@ func (mr *FollowRepo) CloseDriverConnection(ctx context.Context) {
 	mr.driver.Close(ctx)
 }
 
-func (mr *FollowRepo) GetAllNodesWithFollowLabel(limit int) (model.Follows, error) {
+func (mr *FollowRepo) GetAllProfiles() (model.Profiles, error) {
+	ctx := context.Background()
+	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
+	defer session.Close(ctx)
+
+	// ExecuteRead for read transactions (Read and queries)
+	profileResults, err := session.ExecuteRead(ctx,
+		func(transaction neo4j.ManagedTransaction) (any, error) {
+			result, err := transaction.Run(ctx,
+				`MATCH (profile:Profile)
+				RETURN profile.id as profileID, profile.firstName as firstName, profile.lastName as lastName, 
+				profile.profilePicture as profilePicture, profile.userID as userID `,
+				map[string]any{})
+			if err != nil {
+				return nil, err
+			}
+
+			// Option 1: we iterate over result while there are records
+			var profiles model.Profiles
+			for result.Next(ctx) {
+				record := result.Record()
+
+				ID, _ := record.Get("id")
+				FirstName, _ := record.Get("firstName")
+				LastName, _ := record.Get("lastName")
+				ProfilePicture, _ := record.Get("profilePicture")
+				UserID, _ := record.Get("userID")
+				profiles = append(profiles, &model.Profile{
+					ID:             ID.(int64),
+					FirstName:      FirstName.(string),
+					LastName:       LastName.(string),
+					ProfilePicture: ProfilePicture.(string),
+					UserID:         UserID.(int64),
+				})
+			}
+			return profiles, nil
+			// Option 2: we collect all records from result and iterate and map outside of the transaction
+			// return result.Collect(ctx)
+		})
+	if err != nil {
+		mr.logger.Println("Error querying search:", err)
+		return nil, err
+	}
+	return profileResults.(model.Profiles), nil
+}
+
+func (mr *FollowRepo) WriteProfile(profile *model.Profile) error {
+	// Neo4J Sessions are lightweight so we create one for each transaction (Cassandra sessions are not lightweight!)
+	// Sessions are NOT thread safe
+	ctx := context.Background()
+	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
+	defer session.Close(ctx)
+
+	// ExecuteWrite for write transactions (Create/Update/Delete)
+	savedProfile, err := session.ExecuteWrite(ctx,
+		func(transaction neo4j.ManagedTransaction) (any, error) {
+			result, err := transaction.Run(ctx,
+				"CREATE (p:Profile) SET p.id = $id, p.firstName = $firstName, p.lastName = $lastName, p.profilePicture = $profilePicture, p.userID = $userID,  RETURN p.firstName + p.lastName + p.profilePicture + p.userID",
+				map[string]any{"id": profile.ID, "firstName": profile.FirstName, "lastName": profile.LastName, "profilePicture": profile.ProfilePicture, "userID": profile.UserID})
+			if err != nil {
+				return nil, err
+			}
+
+			if result.Next(ctx) {
+				return result.Record().Values[0], nil
+			}
+
+			return nil, result.Err()
+		})
+	if err != nil {
+		mr.logger.Println("Error inserting Person:", err)
+		return err
+	}
+	mr.logger.Println(savedProfile.(string))
+	return nil
+}
+
+/*
+func (mr *FollowRepo) GetAllNodesWithFollowLabel() (model.Follows, error) {
 	ctx := context.Background()
 	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
@@ -66,9 +144,8 @@ func (mr *FollowRepo) GetAllNodesWithFollowLabel(limit int) (model.Follows, erro
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
 				`MATCH (follow:Follow)
-				RETURN follow.profileID as profileID, follow.followerID as followerID
-				LIMIT $limit`,
-				map[string]any{"limit": limit})
+				RETURN follow.profileID as profileID, follow.followerID as followerID`,
+				map[string]any{})
 			if err != nil {
 				return nil, err
 			}
@@ -140,7 +217,7 @@ func (fr *FollowRepo) GetAllFollowers(profileID uint32, limit int) (model.Follow
 	}
 	return followResults.(model.Follows), nil
 }
-
+*/
 /*
 func (fr *FollowRepo) AddFollow(followDto Follow) error {
     // Kreiraj novi follow
