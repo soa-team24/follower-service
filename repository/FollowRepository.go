@@ -67,7 +67,7 @@ func (mr *FollowRepo) GetAllProfiles() (model.Profiles, error) {
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
 				`MATCH (profile:Profile)
-				RETURN ID(profile) as profileID, profile.firstName as firstName, profile.lastName as lastName, 
+				RETURN profile.userID as profileID, profile.firstName as firstName, profile.lastName as lastName, 
 				profile.profilePicture as profilePicture, profile.userID as userID `,
 				map[string]any{})
 			if err != nil {
@@ -173,7 +173,7 @@ func (mr *FollowRepo) WriteFollow(follow *model.Follow) error {
 	_, err := session.ExecuteWrite(ctx,
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			_, err := transaction.Run(ctx,
-				"MATCH (p:Profile), (f:Profile) WHERE ID(p) = $profileID AND ID(f) = $followerID CREATE (f)-[:FOLLOWS]->(p)",
+				"MATCH (p:Profile), (f:Profile) WHERE p.userID = $profileID AND f.userID = $followerID CREATE (f)-[:FOLLOWS]->(p)",
 				map[string]interface{}{
 					"profileID":  follow.ProfileID,
 					"followerID": follow.FollowerID,
@@ -202,8 +202,8 @@ func (mr *FollowRepo) GetAllFollowersForUser(id uint32) (model.Profiles, error) 
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
 				`MATCH (p1:Profile)<-[:FOLLOWS]-(p2:Profile)
-				WHERE ID(p1) = $profileID
-				RETURN collect({ id: ID(p2), firstName: p2.firstName, lastName: p2.lastName, profilePicture: p2.profilePicture, userID: p2.userID }) as followers`,
+				WHERE p1.userID = $profileID
+				RETURN collect({ id: p2.userID, firstName: p2.firstName, lastName: p2.lastName, profilePicture: p2.profilePicture, userID: p2.userID }) as followers`,
 
 				map[string]any{"profileID": id})
 			if err != nil {
@@ -244,8 +244,8 @@ func (mr *FollowRepo) GetAllFollowersOfMyFollowers(id uint32) (model.Profiles, e
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
 				`MATCH (p1:Profile)-[:FOLLOWS]->(p2:Profile)-[:FOLLOWS]->(p3:Profile)
-				WHERE ID(p1) = $profileID
-				RETURN collect({ id: ID(p3), firstName: p3.firstName, lastName: p3.lastName, profilePicture: p3.profilePicture, userID: p3.userID }) as followers`,
+				WHERE p1.userID = $profileID
+				RETURN collect({ id: p3.userID, firstName: p3.firstName, lastName: p3.lastName, profilePicture: p3.profilePicture, userID: p3.userID }) as followers`,
 
 				map[string]any{"profileID": id})
 			if err != nil {
@@ -274,6 +274,34 @@ func (mr *FollowRepo) GetAllFollowersOfMyFollowers(id uint32) (model.Profiles, e
 		return nil, err
 	}
 	return movieResults.(model.Profiles), nil
+}
+
+func (fr *FollowRepo) IsFollowing(followerID int, userID int) (bool, error) {
+	ctx := context.Background()
+	session := fr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
+	defer session.Close(ctx)
+
+	// Izvršite upit za provjeru postoji li veza zapraćivanja između korisnika i autora
+	boolResult, err := session.ExecuteRead(ctx,
+		func(transaction neo4j.ManagedTransaction) (any, error) {
+			result, err := transaction.Run(ctx,
+				"MATCH (f:Profile)-[:FOLLOWS]->(u:Profile) WHERE f.userID = $followerID AND u.userID = $userID RETURN COUNT(*) as count",
+				map[string]any{"followerID": followerID, "userID": userID})
+			if err != nil {
+				return nil, err
+			}
+			if result.Next(ctx) {
+				return result.Record().Values[0].(int64) > 0, nil
+			}
+
+			return false, nil
+		})
+
+	if err != nil {
+		return false, err
+	}
+	// Ako veza ne postoji, korisnik ne prati autora
+	return boolResult.(bool), nil
 }
 
 func (fr *FollowRepo) convertDataToProfileSlice(data any) model.Profiles {

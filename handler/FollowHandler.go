@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"follower-service/dto"
 	"follower-service/model"
 	"follower-service/repository"
 	"log"
@@ -127,6 +128,33 @@ func (m *FollowHandler) GetAllProfiles(rw http.ResponseWriter, h *http.Request) 
 	}
 
 	err = profiles.ToJSON(rw)
+	if err != nil {
+		http.Error(rw, "Unable to convert to json", http.StatusInternalServerError)
+		m.logger.Fatal("Unable to convert to json :", err)
+		return
+	}
+}
+
+func (m *FollowHandler) CheckIfUserFollows(rw http.ResponseWriter, h *http.Request) {
+	m.logger.Print("Usao u handler: ")
+	vars := mux.Vars(h)
+	followerID, err := strconv.Atoi(vars["followerID"])
+	if err != nil {
+		m.logger.Printf("Expected integer, got: %s", vars["userId"])
+		http.Error(rw, "Unable to convert user ID to integer", http.StatusBadRequest)
+		return
+	}
+	userID, err := strconv.Atoi(vars["userID"])
+	if err != nil {
+		m.logger.Printf("Expected integer, got: %s", vars["userId"])
+		http.Error(rw, "Unable to convert user ID to integer", http.StatusBadRequest)
+		return
+	}
+	isFollowing, _ := m.repo.IsFollowing(followerID, userID)
+
+	booleanDto := dto.BooleanDto{BoolField: isFollowing}
+
+	err = booleanDto.ToJSON(rw)
 	if err != nil {
 		http.Error(rw, "Unable to convert to json", http.StatusInternalServerError)
 		m.logger.Fatal("Unable to convert to json :", err)

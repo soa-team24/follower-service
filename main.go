@@ -25,8 +25,8 @@ func seedProfiles(store *repository.FollowRepo) error {
 			Followers:      nil,
 		},
 		{
-			FirstName:      "Autor",
-			LastName:       "Autor",
+			FirstName:      "Mika",
+			LastName:       "Mikic",
 			ProfilePicture: "profile2.jpg",
 			UserID:         2,
 			Followers:      nil,
@@ -120,6 +120,9 @@ func main() {
 
 	getAllFollowersOfMyFollowers := router.Methods(http.MethodGet).Subrouter()
 	getAllFollowersOfMyFollowers.HandleFunc("/userSuggestedFollowers/{userId}", followsHandler.GetAllFollowersOfMyFollowers)
+
+	getAllBlogs := router.Methods(http.MethodGet).Subrouter()
+	getAllBlogs.HandleFunc("/checkIfFollows/{followerID}/{userID}", followsHandler.CheckIfUserFollows)
 
 	allowedOrigins := handlers.AllowedOrigins([]string{"*"}) // Allow all origins
 	allowedMethods := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"})
