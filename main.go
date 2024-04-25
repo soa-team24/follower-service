@@ -11,42 +11,45 @@ import (
 	"os/signal"
 	"time"
 
-	gorillaHandlers "github.com/gorilla/handlers"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 )
 
 func seedProfiles(store *repository.FollowRepo) error {
 	profiles := []*model.Profile{
 		{
-			ID:             5,
-			FirstName:      "Marko",
-			LastName:       "Filipovic",
+			FirstName:      "Andjela",
+			LastName:       "Djordjevic",
 			ProfilePicture: "profile1.jpg",
-			UserID:         2,
-			Followers:      nil,
-		},
-		{
-			ID:             4,
-			FirstName:      "Maja",
-			LastName:       "Petrovic",
-			ProfilePicture: "profile2.jpg",
 			UserID:         1,
 			Followers:      nil,
 		},
 		{
-			ID:             6,
-			FirstName:      "Mina",
-			LastName:       "Jovanovic",
+			FirstName:      "Autor",
+			LastName:       "Autor",
+			ProfilePicture: "profile2.jpg",
+			UserID:         2,
+			Followers:      nil,
+		},
+		{
+			FirstName:      "Pera",
+			LastName:       "Peric",
 			ProfilePicture: "profile2.jpg",
 			UserID:         3,
 			Followers:      nil,
 		},
 		{
-			ID:             7,
-			FirstName:      "Petar",
-			LastName:       "Ivanovic",
+			FirstName:      "Nina",
+			LastName:       "Batranovic",
 			ProfilePicture: "profile2.jpg",
 			UserID:         4,
+			Followers:      nil,
+		},
+		{
+			FirstName:      "Tamara",
+			LastName:       "Miljevic",
+			ProfilePicture: "profile2.jpg",
+			UserID:         5,
 			Followers:      nil,
 		},
 
@@ -92,7 +95,7 @@ func main() {
 	defer store.CloseDriverConnection(timeoutContext)
 	store.CheckConnection()
 
-	err = seedProfiles(store)
+	//err = seedProfiles(store)
 	if err != nil {
 		logger.Fatal("Failed to seed profiles:", err)
 	}
@@ -118,7 +121,16 @@ func main() {
 	getAllFollowersOfMyFollowers := router.Methods(http.MethodGet).Subrouter()
 	getAllFollowersOfMyFollowers.HandleFunc("/userSuggestedFollowers/{userId}", followsHandler.GetAllFollowersOfMyFollowers)
 
-	cors := gorillaHandlers.CORS(gorillaHandlers.AllowedOrigins([]string{"*"}))
+	allowedOrigins := handlers.AllowedOrigins([]string{"*"}) // Allow all origins
+	allowedMethods := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"})
+	allowedHeaders := handlers.AllowedHeaders([]string{
+		"Content-Type",
+		"Authorization",
+		"X-Custom-Header",
+	})
+
+	//cors := gorillaHandlers.CORS(gorillaHandlers.AllowedOrigins([]string{"*"}))
+	cors := handlers.CORS(allowedOrigins, allowedMethods, allowedHeaders)
 
 	//Initialize the server
 	server := http.Server{
