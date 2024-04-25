@@ -6,12 +6,12 @@ import (
 )
 
 type Profile struct {
-	ID             int64    `json:"id"`
-	FirstName      string   `json:"firstName"`
-	LastName       string   `json:"lastName"`
-	ProfilePicture string   `json:"profilePicture"`
-	UserID         int64    `json:"userID"`
-	Follows        []Follow `json:"follows"`
+	ID             int64     `json:"id"`
+	FirstName      string    `json:"firstName"`
+	LastName       string    `json:"lastName"`
+	ProfilePicture string    `json:"profilePicture"`
+	UserID         int64     `json:"userID"`
+	Followers      []Profile `json:"followers"`
 }
 
 type Profiles []*Profile

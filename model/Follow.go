@@ -35,3 +35,8 @@ func (o *Follows) ToJSON(w io.Writer) error {
 func (f *Follow) Equal(other *Follow) bool {
 	return f.ProfileID == other.ProfileID && f.FollowerID == other.FollowerID
 }
+
+func (o *Follow) FromJSON(r io.Reader) error {
+	d := json.NewDecoder(r)
+	return d.Decode(o)
+}

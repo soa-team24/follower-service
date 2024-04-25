@@ -23,7 +23,7 @@ func seedProfiles(store *repository.FollowRepo) error {
 			LastName:       "Filipovic",
 			ProfilePicture: "profile1.jpg",
 			UserID:         2,
-			Follows:        nil,
+			Followers:      nil,
 		},
 		{
 			ID:             4,
@@ -31,7 +31,7 @@ func seedProfiles(store *repository.FollowRepo) error {
 			LastName:       "Petrovic",
 			ProfilePicture: "profile2.jpg",
 			UserID:         1,
-			Follows:        nil,
+			Followers:      nil,
 		},
 		{
 			ID:             6,
@@ -39,7 +39,7 @@ func seedProfiles(store *repository.FollowRepo) error {
 			LastName:       "Jovanovic",
 			ProfilePicture: "profile2.jpg",
 			UserID:         3,
-			Follows:        nil,
+			Followers:      nil,
 		},
 		{
 			ID:             7,
@@ -47,12 +47,16 @@ func seedProfiles(store *repository.FollowRepo) error {
 			LastName:       "Ivanovic",
 			ProfilePicture: "profile2.jpg",
 			UserID:         4,
-			Follows:        nil,
+			Followers:      nil,
 		},
 
 		// Add more profiles as needed
 	}
 
+	err1 := store.EmptyBase()
+	if err1 != nil {
+		return err1
+	}
 	// Iterate over profiles and save them to the database
 	for _, profile := range profiles {
 		err := store.WriteProfile(profile)
@@ -104,7 +108,15 @@ func main() {
 	getAllProfiles := router.Methods(http.MethodGet).Subrouter()
 	getAllProfiles.HandleFunc("/profiles", followsHandler.GetAllProfiles)
 
-	//postPersonNode.Use(moviesHandler.MiddlewarePersonDeserialization)
+	postFollowNode := router.Methods(http.MethodPost).Subrouter()
+	postFollowNode.HandleFunc("/follow", followsHandler.AddFollow)
+	postFollowNode.Use(followsHandler.MiddlewareFollowDeserialization)
+
+	getAllFollowersForUser := router.Methods(http.MethodGet).Subrouter()
+	getAllFollowersForUser.HandleFunc("/userFollowers/{userId}", followsHandler.GetAllFollowersForUser)
+
+	getAllFollowersOfMyFollowers := router.Methods(http.MethodGet).Subrouter()
+	getAllFollowersOfMyFollowers.HandleFunc("/userSuggestedFollowers/{userId}", followsHandler.GetAllFollowersOfMyFollowers)
 
 	cors := gorillaHandlers.CORS(gorillaHandlers.AllowedOrigins([]string{"*"}))
 

@@ -57,6 +57,7 @@ func (mr *FollowRepo) CloseDriverConnection(ctx context.Context) {
 }
 
 func (mr *FollowRepo) GetAllProfiles() (model.Profiles, error) {
+	mr.logger.Println("Usao u repo")
 	ctx := context.Background()
 	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
@@ -66,7 +67,7 @@ func (mr *FollowRepo) GetAllProfiles() (model.Profiles, error) {
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
 				`MATCH (profile:Profile)
-				RETURN profile.id as profileID, profile.firstName as firstName, profile.lastName as lastName, 
+				RETURN ID(profile) as profileID, profile.firstName as firstName, profile.lastName as lastName, 
 				profile.profilePicture as profilePicture, profile.userID as userID `,
 				map[string]any{})
 			if err != nil {
@@ -78,7 +79,7 @@ func (mr *FollowRepo) GetAllProfiles() (model.Profiles, error) {
 			for result.Next(ctx) {
 				record := result.Record()
 
-				ID, _ := record.Get("id")
+				ID, _ := record.Get("profileID")
 				FirstName, _ := record.Get("firstName")
 				LastName, _ := record.Get("lastName")
 				ProfilePicture, _ := record.Get("profilePicture")
@@ -113,7 +114,7 @@ func (mr *FollowRepo) WriteProfile(profile *model.Profile) error {
 	savedProfile, err := session.ExecuteWrite(ctx,
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
-				"CREATE (p:Profile) SET p.id = $id, p.firstName = $firstName, p.lastName = $lastName, p.profilePicture = $profilePicture, p.userID = $userID,  RETURN p.firstName + p.lastName + p.profilePicture + p.userID",
+				"CREATE (p:Profile) SET p.firstName = $firstName, p.lastName = $lastName, p.profilePicture = $profilePicture, p.userID = $userID  RETURN p.firstName + p.lastName + p.profilePicture + p.userID + ', from node ' + id(p)",
 				map[string]any{"id": profile.ID, "firstName": profile.FirstName, "lastName": profile.LastName, "profilePicture": profile.ProfilePicture, "userID": profile.UserID})
 			if err != nil {
 				return nil, err
@@ -133,170 +134,170 @@ func (mr *FollowRepo) WriteProfile(profile *model.Profile) error {
 	return nil
 }
 
-/*
-func (mr *FollowRepo) GetAllNodesWithFollowLabel() (model.Follows, error) {
+func (mr *FollowRepo) EmptyBase() error {
+	// Neo4J Sessions are lightweight so we create one for each transaction (Cassandra sessions are not lightweight!)
+	// Sessions are NOT thread safe
 	ctx := context.Background()
 	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
 
-	// ExecuteRead for read transactions (Read and queries)
-	followResults, err := session.ExecuteRead(ctx,
+	// ExecuteWrite for write transactions (Create/Update/Delete)
+	_, err := session.ExecuteWrite(ctx,
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
-				`MATCH (follow:Follow)
-				RETURN follow.profileID as profileID, follow.followerID as followerID`,
+				"MATCH (n) DETACH DELETE n",
 				map[string]any{})
 			if err != nil {
 				return nil, err
 			}
 
-			// Option 1: we iterate over result while there are records
-			var follows model.Follows
-			for result.Next(ctx) {
-				record := result.Record()
+			return nil, result.Err()
+		})
+	if err != nil {
+		mr.logger.Println("Error inserting Person:", err)
+		return err
+	}
+	mr.logger.Println("Succesfully deleted base")
+	return nil
+}
 
-				profileID, _ := record.Get("profileID")
-				followerID, _ := record.Get("followerID")
-				follows = append(follows, &model.Follow{
-					ProfileID:  profileID.(uint32),
-					FollowerID: followerID.(uint32),
+// ///////
+func (mr *FollowRepo) WriteFollow(follow *model.Follow) error {
+	// Neo4J Sessions are lightweight so we create one for each transaction (Cassandra sessions are not lightweight!)
+	// Sessions are NOT thread safe
+	ctx := context.Background()
+	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
+	defer session.Close(ctx)
+
+	// ExecuteWrite for write transactions (Create/Update/Delete)
+	_, err := session.ExecuteWrite(ctx,
+		func(transaction neo4j.ManagedTransaction) (any, error) {
+			_, err := transaction.Run(ctx,
+				"MATCH (p:Profile), (f:Profile) WHERE ID(p) = $profileID AND ID(f) = $followerID CREATE (f)-[:FOLLOWS]->(p)",
+				map[string]interface{}{
+					"profileID":  follow.ProfileID,
+					"followerID": follow.FollowerID,
 				})
+			if err != nil {
+				return nil, err
 			}
-			return follows, nil
-			// Option 2: we collect all records from result and iterate and map outside of the transaction
-			// return result.Collect(ctx)
+
+			return nil, nil
+		})
+	if err != nil {
+		mr.logger.Println("Error inserting Person:", err)
+		return err
+	}
+	mr.logger.Println("Added follow sucesfuly")
+	return nil
+}
+
+func (mr *FollowRepo) GetAllFollowersForUser(id uint32) (model.Profiles, error) {
+	ctx := context.Background()
+	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
+	defer session.Close(ctx)
+
+	// ExecuteRead for read transactions (Read and queries)
+	movieResults, err := session.ExecuteRead(ctx,
+		func(transaction neo4j.ManagedTransaction) (any, error) {
+			result, err := transaction.Run(ctx,
+				`MATCH (p1:Profile)<-[:FOLLOWS]-(p2:Profile)
+				WHERE ID(p1) = $profileID
+				RETURN collect({ id: ID(p2), firstName: p2.firstName, lastName: p2.lastName, profilePicture: p2.profilePicture, userID: p2.userID }) as followers`,
+
+				map[string]any{"profileID": id})
+			if err != nil {
+				return nil, err
+			}
+			var followersRetVal model.Profiles
+
+			for result.Next(ctx) {
+				//mr.logger.Println("Found one profile:")
+				record := result.Record()
+				followers, _ := record.Get("followers")
+				followersRetVal = mr.convertDataToProfileSlice(followers)
+
+			}
+
+			if followersRetVal == nil {
+				followersRetVal = make(model.Profiles, 0)
+				mr.logger.Println("Profile NOT FOUND:")
+				return followersRetVal, nil
+			}
+
+			return followersRetVal, nil
 		})
 	if err != nil {
 		mr.logger.Println("Error querying search:", err)
 		return nil, err
 	}
-	return followResults.(model.Follows), nil
+	return movieResults.(model.Profiles), nil
 }
 
-// DOBAVLJANJE PROFILA KOJI GA PRATE
-func (fr *FollowRepo) GetAllFollowers(profileID uint32, limit int) (model.Follows, error) {
+func (mr *FollowRepo) GetAllFollowersOfMyFollowers(id uint32) (model.Profiles, error) {
 	ctx := context.Background()
-	session := fr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
+	session := mr.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: "neo4j"})
 	defer session.Close(ctx)
 
-	followResults, err := session.ExecuteRead(ctx,
+	// ExecuteRead for read transactions (Read and queries)
+	movieResults, err := session.ExecuteRead(ctx,
 		func(transaction neo4j.ManagedTransaction) (any, error) {
 			result, err := transaction.Run(ctx,
-				`MATCH (follower:Follow {profileID: $profileID})
-				RETURN follower.followerID as followerID`,
-				map[string]interface{}{"profileID": profileID})
+				`MATCH (p1:Profile)-[:FOLLOWS]->(p2:Profile)-[:FOLLOWS]->(p3:Profile)
+				WHERE ID(p1) = $profileID
+				RETURN collect({ id: ID(p3), firstName: p3.firstName, lastName: p3.lastName, profilePicture: p3.profilePicture, userID: p3.userID }) as followers`,
+
+				map[string]any{"profileID": id})
 			if err != nil {
-				fr.logger.Printf("Error executing query: %v\n", err)
 				return nil, err
 			}
+			var followersRetVal model.Profiles
 
-			var followers model.Follows
 			for result.Next(ctx) {
+				//mr.logger.Println("Found one profile:")
 				record := result.Record()
-				followerID, ok := record.Get("followerID")
-				if !ok {
-					fr.logger.Println("Error getting followerID from record")
-					continue
-				}
-				followers = append(followers, &model.Follow{
-					ProfileID:  profileID,
-					FollowerID: followerID.(uint32),
-				})
+				followers, _ := record.Get("followers")
+				followersRetVal = mr.convertDataToProfileSlice(followers)
+
 			}
 
-			if err := result.Err(); err != nil {
-				fr.logger.Printf("Error iterating result: %v\n", err)
-				return nil, err
+			if followersRetVal == nil {
+				followersRetVal = make(model.Profiles, 0)
+				mr.logger.Println("Profile NOT FOUND:")
+				return followersRetVal, nil
 			}
 
-			return followers, nil
+			return followersRetVal, nil
 		})
 	if err != nil {
-		fr.logger.Println("Error querying search:", err)
+		mr.logger.Println("Error querying search:", err)
 		return nil, err
 	}
-	return followResults.(model.Follows), nil
-}
-*/
-/*
-func (fr *FollowRepo) AddFollow(followDto Follow) error {
-    // Kreiraj novi follow
-    follow, err := NewFollow(followDto.ProfileId, followDto.FollowerId)
-    if err != nil {
-        return err
-    }
-
-    // Dohvati profil na osnovu ID-ja
-    profile, err := fr.GetProfile(int(followDto.ProfileId))
-    if err != nil {
-        return err
-    }
-
-    // Dodaj follow u profil
-    err = profile.AddFollow(follow)
-    if err != nil {
-        return err
-    }
-
-    // Ažuriraj profil u repozitorijumu
-    err = fr.UpdateProfile(profile)
-    if err != nil {
-        return err
-    }
-
-    return nil
+	return movieResults.(model.Profiles), nil
 }
 
-func (fr *FollowRepo) GetProfile(profileID int) (*model.Profile, error) {
-    // Napravi HTTP zahtev ka monolitnoj aplikaciji
-    resp, err := http.Get(fmt.Sprintf("http://monolith-api/profiles/%d", profileID))
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
+func (fr *FollowRepo) convertDataToProfileSlice(data any) model.Profiles {
+	var profiles model.Profiles
+	if data == nil {
+		return profiles
+	}
+	list := data.([]interface{})
+	if len(list) == 0 {
+		return profiles
+	}
+	for _, prof := range list {
+		if prof == nil {
+			continue
+		}
+		profileProps := prof.(map[string]interface{})
 
-    // Proveri da li je status kod uspešan
-    if resp.StatusCode != http.StatusOK {
-        return nil, fmt.Errorf("failed to get profile, status code: %d", resp.StatusCode)
-    }
-
-    // Dekoduj JSON odgovor u strukturu Profile
-    var profile model.Profile
-    err = json.NewDecoder(resp.Body).Decode(&profile)
-    if err != nil {
-        return nil, err
-    }
-
-    return &profile, nil
+		profiles = append(profiles, &model.Profile{
+			ID:             profileProps["id"].(int64),
+			FirstName:      profileProps["firstName"].(string),
+			LastName:       profileProps["lastName"].(string),
+			ProfilePicture: profileProps["profilePicture"].(string),
+			UserID:         profileProps["userID"].(int64),
+		})
+	}
+	return profiles
 }
-
-// UpdateProfile ažurira profil u monolitnoj aplikaciji
-func (fr *FollowRepo) UpdateProfile(profile *model.Profile) error {
-    // Pretvori profil u JSON
-    profileJSON, err := json.Marshal(profile)
-    if err != nil {
-        return err
-    }
-
-    // Napravi HTTP zahtev za ažuriranje profila
-    req, err := http.NewRequest(http.MethodPut, "http://monolith-api/profiles", bytes.NewBuffer(profileJSON))
-    if err != nil {
-        return err
-    }
-    req.Header.Set("Content-Type", "application/json")
-
-    // Izvrši zahtev
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-
-    // Proveri da li je status kod uspešan
-    if resp.StatusCode != http.StatusOK {
-        return fmt.Errorf("failed to update profile, status code: %d", resp.StatusCode)
-    }
-
-    return nil
-}*/
