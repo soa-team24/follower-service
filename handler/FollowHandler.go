@@ -13,14 +13,14 @@ import (
 type KeyProduct struct{}
 
 type FollowHandler struct {
+	follower.UnimplementedFollowServiceServer
 	logger *log.Logger
-	// NoSQL: injecting movie repository
-	repo *repository.FollowRepo
+	repo   *repository.FollowRepo
 }
 
 // Injecting the logger makes this code much more testable.
 func NewFollowHandler(l *log.Logger, r *repository.FollowRepo) *FollowHandler {
-	return &FollowHandler{l, r}
+	return &FollowHandler{logger: l, repo: r}
 }
 
 /*func (m *FollowHandler) AddFollow(rw http.ResponseWriter, h *http.Request) {
@@ -36,7 +36,7 @@ func NewFollowHandler(l *log.Logger, r *repository.FollowRepo) *FollowHandler {
 
 func (h *FollowHandler) AddFollow(ctx context.Context, request *follower.AddFollowRequest) (*follower.AddFollowResponse, error) {
 
-	follow := ctx.Value(KeyProduct{}).(*model.Follow)
+	follow := mapper.MapToFollower(request.Follow)
 
 	h.repo.WriteFollow(follow)
 
@@ -208,13 +208,7 @@ func (h *FollowHandler) GetAllProfiles(ctx context.Context, request *follower.Ge
 		return nil, nil
 	}
 
-	var profiless []model.Profile
-
-	for _, h := range profiles {
-		profiless = append(profiless, *h)
-	}
-
-	protoProfiles := mapper.MapSliceToProtoProfiles(profiless)
+	protoProfiles := mapper.MapSliceToProtoProfilesPointer(profiles)
 	response := &follower.GetAllProfilesResponse{
 		Profiles: protoProfiles,
 	}

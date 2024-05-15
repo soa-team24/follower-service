@@ -61,6 +61,16 @@ func MapSliceToProtoProfiles(modelProfiles []model.Profile) []*p.Profile {
 	return protoProfiles
 }
 
+func MapSliceToProtoProfilesPointer(modelProfiles []*model.Profile) []*p.Profile {
+	var protoProfiles []*p.Profile
+
+	for _, modelProfile := range modelProfiles {
+		protoProfile := MapToPProfile(modelProfile)
+		protoProfiles = append(protoProfiles, protoProfile)
+	}
+
+	return protoProfiles
+}
 func MapSliceToModelProfiles(protoProfiles []*p.Profile) []model.Profile {
 	var modelProfiles []model.Profile
 
