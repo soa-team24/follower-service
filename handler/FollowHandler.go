@@ -2,14 +2,12 @@ package handler
 
 import (
 	"context"
-	"follower-service/dto"
+	"follower-service/mapper"
 	"follower-service/model"
 	"follower-service/repository"
 	"log"
 	"net/http"
-	"strconv"
-
-	"github.com/gorilla/mux"
+	"soa/grpc/proto/follower"
 )
 
 type KeyProduct struct{}
@@ -25,7 +23,7 @@ func NewFollowHandler(l *log.Logger, r *repository.FollowRepo) *FollowHandler {
 	return &FollowHandler{l, r}
 }
 
-func (m *FollowHandler) AddFollow(rw http.ResponseWriter, h *http.Request) {
+/*func (m *FollowHandler) AddFollow(rw http.ResponseWriter, h *http.Request) {
 	follow := h.Context().Value(KeyProduct{}).(*model.Follow)
 	err := m.repo.WriteFollow(follow)
 	if err != nil {
@@ -34,9 +32,18 @@ func (m *FollowHandler) AddFollow(rw http.ResponseWriter, h *http.Request) {
 		return
 	}
 	rw.WriteHeader(http.StatusCreated)
+}*/
+
+func (h *FollowHandler) AddFollow(ctx context.Context, request *follower.AddFollowRequest) (*follower.AddFollowResponse, error) {
+
+	follow := ctx.Value(KeyProduct{}).(*model.Follow)
+
+	h.repo.WriteFollow(follow)
+
+	return &follower.AddFollowResponse{}, nil
 }
 
-func (m *FollowHandler) GetAllFollowersForUser(rw http.ResponseWriter, h *http.Request) {
+/*func (m *FollowHandler) GetAllFollowersForUser(rw http.ResponseWriter, h *http.Request) {
 	vars := mux.Vars(h)
 	userID, err := strconv.Atoi(vars["userId"])
 	if err != nil {
@@ -60,8 +67,36 @@ func (m *FollowHandler) GetAllFollowersForUser(rw http.ResponseWriter, h *http.R
 		m.logger.Fatal("Unable to convert to json :", err)
 		return
 	}
+}*/
+
+func (h *FollowHandler) GetAllFollowersForUser(ctx context.Context, request *follower.GetFollowersRequest) (*follower.GetFollowersResponse, error) {
+	userId := request.UserId
+
+	id := uint32(userId)
+
+	modelFollows, err := h.repo.GetAllFollowersForUser(id)
+	if err != nil {
+		h.logger.Print("Database exception: ", err)
+	}
+
+	if modelFollows == nil {
+		return nil, nil
+	}
+
+	var followers []model.Profile
+
+	for _, follow := range modelFollows {
+		followers = append(followers, *follow)
+	}
+
+	protoFollows := mapper.MapSliceToProtoFollow(followers)
+	response := &follower.GetFollowersResponse{
+		Followers: protoFollows,
+	}
+	return response, nil
 }
 
+/*
 func (m *FollowHandler) GetAllFollowersOfMyFollowers(rw http.ResponseWriter, h *http.Request) {
 	vars := mux.Vars(h)
 	userID, err := strconv.Atoi(vars["userId"])
@@ -86,6 +121,34 @@ func (m *FollowHandler) GetAllFollowersOfMyFollowers(rw http.ResponseWriter, h *
 		m.logger.Fatal("Unable to convert to json :", err)
 		return
 	}
+}*/
+
+func (h *FollowHandler) GetAllFollowersOfMyFollowers(ctx context.Context, request *follower.GetFollowersOfMyFollowersRequest) (*follower.GetFollowersResponse, error) {
+	userId := request.UserId
+
+	id := uint32(userId)
+
+	profiles, err := h.repo.GetAllFollowersOfMyFollowers(id)
+	if err != nil {
+		println("Database exception: ")
+	}
+
+	if profiles == nil {
+		return nil, nil
+	}
+
+	var profiless []model.Profile
+
+	for _, h := range profiles {
+		profiless = append(profiless, *h)
+	}
+
+	protoProfiles := mapper.MapSliceToProtoProfiles(profiless)
+	response := &follower.GetFollowersResponse{
+		Followers: protoProfiles,
+	}
+	return response, nil
+
 }
 
 /*
@@ -115,7 +178,7 @@ func (m *FollowHandler) GetAllFollowersOfMyFollowers(rw http.ResponseWriter, h *
 		}
 	}
 */
-func (m *FollowHandler) GetAllProfiles(rw http.ResponseWriter, h *http.Request) {
+/*func (m *FollowHandler) GetAllProfiles(rw http.ResponseWriter, h *http.Request) {
 	m.logger.Print("Usao u handler: ")
 	profiles, err := m.repo.GetAllProfiles()
 	m.logger.Print("Vratio iz repository: ")
@@ -133,8 +196,33 @@ func (m *FollowHandler) GetAllProfiles(rw http.ResponseWriter, h *http.Request) 
 		m.logger.Fatal("Unable to convert to json :", err)
 		return
 	}
+}*/
+
+func (h *FollowHandler) GetAllProfiles(ctx context.Context, request *follower.GetAllProfilesRequest) (*follower.GetAllProfilesResponse, error) {
+	profiles, err := h.repo.GetAllProfiles()
+	if err != nil {
+		println("Database exception: ")
+	}
+
+	if profiles == nil {
+		return nil, nil
+	}
+
+	var profiless []model.Profile
+
+	for _, h := range profiles {
+		profiless = append(profiless, *h)
+	}
+
+	protoProfiles := mapper.MapSliceToProtoProfiles(profiless)
+	response := &follower.GetAllProfilesResponse{
+		Profiles: protoProfiles,
+	}
+	return response, nil
+
 }
 
+/*
 func (m *FollowHandler) CheckIfUserFollows(rw http.ResponseWriter, h *http.Request) {
 	m.logger.Print("Usao u handler: ")
 	vars := mux.Vars(h)
@@ -160,6 +248,18 @@ func (m *FollowHandler) CheckIfUserFollows(rw http.ResponseWriter, h *http.Reque
 		m.logger.Fatal("Unable to convert to json :", err)
 		return
 	}
+}*/
+
+func (m *FollowHandler) CheckIfUserFollows(ctx context.Context, request *follower.CheckIfUserFollowsRequest) (*follower.CheckIfUserFollowsResponse, error) {
+	followerID := request.FollowerId
+	userID := request.UserId
+
+	isFollowing, _ := m.repo.IsFollowing(int(followerID), int(userID))
+
+	response := &follower.CheckIfUserFollowsResponse{
+		IsFollowing: isFollowing,
+	}
+	return response, nil
 }
 
 func (m *FollowHandler) MiddlewareContentTypeSet(next http.Handler) http.Handler {
