@@ -2,8 +2,8 @@ package mapper
 
 import (
 	"follower-service/model"
-	"soa/grpc/proto/follower"
-	p "soa/grpc/proto/follower"
+	"follower-service/proto/follower"
+	p "follower-service/proto/follower"
 )
 
 func MapToPFollow(follow *model.Follow) *p.Follow {
@@ -25,7 +25,7 @@ func MapToFollower(followP *p.Follow) *model.Follow {
 func MapToPProfile(profile *model.Profile) *p.Profile {
 	profileP := &p.Profile{
 		Id:             profile.ID,
-		FirstName:      profile.FirstName,
+		FirstNname:     profile.FirstName,
 		LastName:       profile.LastName,
 		ProfilePicture: profile.ProfilePicture,
 		UserId:         profile.UserID,
@@ -39,7 +39,7 @@ func MapToPProfile(profile *model.Profile) *p.Profile {
 func MapToProfile(profileP *p.Profile) *model.Profile {
 	profile := &model.Profile{
 		ID:             profileP.Id,
-		FirstName:      profileP.FirstName,
+		FirstName:      profileP.FirstNname,
 		LastName:       profileP.LastName,
 		ProfilePicture: profileP.ProfilePicture,
 		UserID:         profileP.UserId,

@@ -26,7 +26,5 @@ require (
 	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
 	google.golang.org/grpc v1.49.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
-	soa/grpc/proto v0.0.1
 )
 
-replace soa/grpc/proto => ../proto

@@ -4,10 +4,10 @@ import (
 	"context"
 	"follower-service/mapper"
 	"follower-service/model"
+	"follower-service/proto/follower"
 	"follower-service/repository"
 	"log"
 	"net/http"
-	"soa/grpc/proto/follower"
 )
 
 type KeyProduct struct{}

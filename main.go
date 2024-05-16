@@ -7,18 +7,17 @@ import (
 	"follower-service/repository"
 	"log"
 	"net"
-	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	//"os/signal"
 	"time"
 
-	"github.com/gorilla/handlers"
-	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
-	"soa/grpc/proto/follower"
+	"follower-service/proto/follower"
 )
 
 func seedProfiles(store *repository.FollowRepo) error {
@@ -80,10 +79,6 @@ func seedProfiles(store *repository.FollowRepo) error {
 func main() {
 	//Reading from environment, if not set we will default it to 8080.
 	//This allows flexibility in different environments (for eg. when running multiple docker api's and want to override the default port)
-	port := os.Getenv("PORT")
-	if len(port) == 0 {
-		port = "8083"
-	}
 
 	// Initialize context
 	timeoutContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -109,11 +104,6 @@ func main() {
 	//Initialize the handler and inject said logger
 	followsHandler := handler.NewFollowHandler(logger, store)
 
-	//Initialize the router and add a middleware for all the requests
-	router := mux.NewRouter()
-
-	router.Use(followsHandler.MiddlewareContentTypeSet)
-
 	/*getAllProfiles := router.Methods(http.MethodGet).Subrouter()
 	getAllProfiles.HandleFunc("/profiles", followsHandler.GetAllProfiles)
 
@@ -130,56 +120,25 @@ func main() {
 	getAllBlogs := router.Methods(http.MethodGet).Subrouter()
 	getAllBlogs.HandleFunc("/checkIfFollows/{followerID}/{userID}", followsHandler.CheckIfUserFollows)*/
 
-	lis, err := net.Listen("tcp", "localhost:8083")
+	lis, err := net.Listen("tcp", ":8000")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	var opts []grpc.ServerOption
-	grpcServer := grpc.NewServer(opts...)
+	grpcServer := grpc.NewServer()
+	reflection.Register(grpcServer)
 
 	follower.RegisterFollowServiceServer(grpcServer, followsHandler)
-	reflection.Register(grpcServer)
-	grpcServer.Serve(lis)
-
-	allowedOrigins := handlers.AllowedOrigins([]string{"*"}) // Allow all origins
-	allowedMethods := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"})
-	allowedHeaders := handlers.AllowedHeaders([]string{
-		"Content-Type",
-		"Authorization",
-		"X-Custom-Header",
-	})
-
-	cors := handlers.CORS(allowedOrigins, allowedMethods, allowedHeaders)
-
-	//Initialize the server
-	server := http.Server{
-		Addr:         ":" + port,
-		Handler:      cors(router),
-		IdleTimeout:  120 * time.Second,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-	}
-
-	logger.Println("Server listening on port", port)
-	//Distribute all the connections to goroutines
 	go func() {
-		err := server.ListenAndServe()
-		if err != nil {
-			logger.Fatal(err)
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatal("server error: ", err)
 		}
 	}()
 
-	/*sigCh := make(chan os.Signal)
-	signal.Notify(sigCh, os.Interrupt)
-	signal.Notify(sigCh, os.Kill)
+	stopCh := make(chan os.Signal)
+	signal.Notify(stopCh, syscall.SIGTERM)
 
-	sig := <-sigCh
-	logger.Println("Received terminate, graceful shutdown", sig)
+	<-stopCh
 
-	//Try to shutdown gracefully
-	if server.Shutdown(timeoutContext) != nil {
-		logger.Fatal("Cannot gracefully shutdown...")
-	}*/
-	logger.Println("Server stopped")
+	grpcServer.Stop()
 }
